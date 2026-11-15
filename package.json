@@ -1,0 +1,17 @@
+{
+  "name": "dream-builder-android",
+  "version": "0.2.1",
+  "private": true,
+  "description": "DREAM BUILDER Android game wrapper",
+  "scripts": {
+    "prepare:web": "mkdir -p www/lib && cp index.html www/index.html && cp node_modules/three/build/three.module.js www/lib/three.module.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "appId": "com.dreambuilder.game",
+  "appName": "DREAM BUILDER",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#101b20"
+  }
+}

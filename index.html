@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#101b20" />
+<title>DREAM BUILDER — Prototype 0.2</title>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101b20;font-family:system-ui,-apple-system,"Noto Sans Bengali",sans-serif;color:#fff}
+  #game{position:fixed;inset:0;touch-action:none} canvas{display:block;touch-action:none}
+  body{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  button{touch-action:manipulation}
+  .top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
+  .brand,.stats,.panel,.hint{background:rgba(9,20,25,.66);border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(12px);box-shadow:0 8px 30px #0004}
+  .brand{padding:9px 13px;border-radius:14px;font-weight:800;letter-spacing:1.5px;font-size:12px}
+  .stats{padding:8px 11px;border-radius:13px;font-size:11px;color:#dce9e7}
+  .stats b{color:#d6f5c5}
+  .bottom{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,8px) + 12px);display:flex;gap:8px;align-items:end}
+  .panel{border-radius:18px;padding:10px;flex:1;min-width:0}
+  .label{font-size:10px;color:#a9c1bc;margin:0 0 8px 2px;letter-spacing:1px;text-transform:uppercase}
+  .tools{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  button{border:1px solid #ffffff20;background:#ffffff0d;color:#fff;border-radius:13px;padding:10px 3px;font-size:11px;font-weight:650;min-height:52px}
+  button span{display:block;font-size:19px;margin-bottom:3px}
+  button.active{background:#b9df9c;color:#15221b;border-color:#d7f6bd}
+  .action{width:64px;min-height:64px;border-radius:18px;background:#c7e8a8;color:#17231b;font-size:12px;font-weight:800;border:0}
+  .hint{position:fixed;pointer-events:none;text-align:center;top:calc(env(safe-area-inset-top,0px) + 62px);left:50%;transform:translateX(-50%);padding:8px 12px;border-radius:12px;font-size:11px;color:#e1eeea;width:max-content;max-width:calc(100% - 24px)}
+  #toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 120px);left:50%;transform:translateX(-50%);background:#182a2a;border:1px solid #ffffff25;padding:9px 13px;border-radius:12px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+  #toast.show{opacity:1}
+  @media(min-width:700px){.bottom{max-width:620px;left:50%;right:auto;width:calc(100% - 24px);transform:translateX(-50%)}.hint{top:calc(env(safe-area-inset-top,0px) + 72px)}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div class="top">
+  <div class="brand">✦ DREAM BUILDER <small style="opacity:.55"> / 0.2</small></div>
+  <div class="stats">🌱 Nature <b id="nature">0</b> &nbsp; ◆ Objects <b id="count">0</b></div>
+</div>
+<div class="hint">জমিতে ট্যাপ করে জিনিস বসাও • টেনে ঘোরাও • দুই আঙুলে জুম</div>
+<div id="err" style="display:none;position:fixed;inset:0;padding:30px;background:#101b20;z-index:9;align-items:center;justify-content:center;text-align:center"></div>
+<div id="toast">জিনিসটি তৈরি হয়েছে!</div>
+<div class="bottom">
+  <div class="panel">
+    <div class="label">Build your dream</div>
+    <div class="tools">
+      <button class="active" data-kind="tree"><span>🌳</span>গাছ</button>
+      <button data-kind="rock"><span>🪨</span>পাথর</button>
+      <button data-kind="flower"><span>🌼</span>ফুল</button>
+      <button data-kind="water"><span>💧</span>পুকুর</button>
+    </div>
+  </div>
+  <button class="action" id="undo">↶<br>Undo</button>
+</div>
+<script type="module">
+let THREE;
+try {
+  THREE = await import('./lib/three.module.js');
+} catch (err) {
+  const box = document.querySelector('#err');
+  box.style.display = 'flex';
+  box.textContent = 'গেম লোড হয়নি: Three.js ফাইল পাওয়া যায়নি (www/lib/three.module.js)। GitHub workflow-তে "Bundle Three.js" ধাপ চলেছে কি না দেখো।';
+  throw err;
+}
+
+const host = document.querySelector('#game');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fc6c6);
+scene.fog = new THREE.Fog(0x9fc6c6, 18, 48);
+
+const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, .1, 120);
+camera.position.set(10, 12, 15);
+camera.lookAt(0,0,0);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+host.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xdaf3ff,0x52604a,2.0));
+const sun = new THREE.DirectionalLight(0xffe4b8,3.0);
+sun.position.set(-8,15,7); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-15;sun.shadow.camera.right=15;sun.shadow.camera.top=15;sun.shadow.camera.bottom=-15;
+scene.add(sun);
+
+const groundGeo = new THREE.PlaneGeometry(32,32,40,40);
+groundGeo.rotateX(-Math.PI/2);
+const p=groundGeo.attributes.position;
+for(let i=0;i<p.count;i++){
+  const x=p.getX(i),z=p.getZ(i);
+  p.setY(i, Math.sin(x*.45)*.13 + Math.cos(z*.38)*.12 + Math.sin((x+z)*.22)*.08);
+}
+groundGeo.computeVertexNormals();
+const ground = new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({color:0x78966a,roughness:1}));
+ground.receiveShadow=true; scene.add(ground);
+
+const island = new THREE.Mesh(new THREE.CylinderGeometry(10.8,12.5,1.2,64),new THREE.MeshStandardMaterial({color:0x5c7560,roughness:1}));
+island.position.y=-.72; island.receiveShadow=true; island.castShadow=true; scene.add(island);
+const water = new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0x5c9eaa,roughness:.3,metalness:.05}));
+water.rotation.x=-Math.PI/2;water.position.y=-1.42;scene.add(water);
+
+// ---------- shared geometry/material (memory-friendly for mobile) ----------
+const M = (color,rough=1,metal=0)=>new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal});
+const G = {
+  trunk:new THREE.CylinderGeometry(.13,.2,1.2,8),
+  leaves:new THREE.ConeGeometry(.85,2.1,9),
+  crown:new THREE.SphereGeometry(.5,10,8),
+  rock:new THREE.DodecahedronGeometry(.55,1),
+  stem:new THREE.CylinderGeometry(.035,.045,.65,6),
+  petals:new THREE.SphereGeometry(.22,10,8),
+  pond:new THREE.CylinderGeometry(1.25,1.25,.12,32)
+};
+const MAT = {
+  trunk:M(0x76513a), leaves:M(0x315e43,.9), crown:M(0x497d50),
+  rock:M(0x818b88), stem:M(0x397347), petals:M(0xf3c95f,.7),
+  pond:M(0x4b9da8,.2,.1)
+};
+const RADIUS = {tree:.8, rock:.65, flower:.3, water:1.3};
+
+const objects=[];
+let selected='tree';
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const Y_AXIS=new THREE.Vector3(0,1,0);
+
+function makeObject(kind){
+ if(kind==='tree'){
+  const g=new THREE.Group();
+  const trunk=new THREE.Mesh(G.trunk,MAT.trunk); trunk.position.y=.6; trunk.castShadow=true; g.add(trunk);
+  const leaves=new THREE.Mesh(G.leaves,MAT.leaves); leaves.position.y=2; leaves.castShadow=true; g.add(leaves);
+  const crown=new THREE.Mesh(G.crown,MAT.crown); crown.position.set(.18,2.35,.08); g.add(crown);
+  return g;
+ }
+ if(kind==='rock'){
+  const m=new THREE.Mesh(G.rock,MAT.rock);
+  m.scale.set(1.2,.75,.9); m.position.y=.32; m.castShadow=true;
+  const g=new THREE.Group(); g.add(m); return g;
+ }
+ if(kind==='flower'){
+  const g=new THREE.Group();
+  const stem=new THREE.Mesh(G.stem,MAT.stem); stem.position.y=.32; g.add(stem);
+  const petals=new THREE.Mesh(G.petals,MAT.petals); petals.position.y=.7; g.add(petals);
+  return g;
+ }
+ const g=new THREE.Group();
+ const pond=new THREE.Mesh(G.pond,MAT.pond); pond.position.y=.04; pond.receiveShadow=true; g.add(pond);
+ return g;
+}
+
+function showToast(msg){
+ const t=document.querySelector('#toast');t.textContent=msg;t.classList.add('show');
+ clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove('show'),1300);
+}
+function updateStats(){
+ document.querySelector('#count').textContent=objects.length;
+ document.querySelector('#nature').textContent=objects.filter(o=>o.userData.kind==='tree'||o.userData.kind==='flower').length;
+}
+
+// ---------- save / load (autosave on device) ----------
+const SAVE_KEY='dreambuilder.save.v1';
+function save(){
+ try{
+  const data=objects.map(o=>({k:o.userData.kind,x:+o.position.x.toFixed(3),y:+o.position.y.toFixed(3),z:+o.position.z.toFixed(3),r:+o.rotation.y.toFixed(3)}));
+  localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+ }catch(e){}
+}
+function spawn(kind,x,y,z,r){
+ const obj=makeObject(kind);
+ obj.position.set(x,y,z); obj.rotation.y=r; obj.userData.kind=kind;
+ scene.add(obj); objects.push(obj); return obj;
+}
+function load(){
+ try{
+  const raw=localStorage.getItem(SAVE_KEY); if(!raw)return;
+  const data=JSON.parse(raw);
+  if(!Array.isArray(data))return;
+  for(const d of data){ if(RADIUS[d.k]!==undefined) spawn(d.k,d.x,d.y,d.z,d.r); }
+  updateStats();
+ }catch(e){}
+}
+
+function placeAt(point){
+ if(Math.hypot(point.x,point.z)>10.1){showToast('দ্বীপের ভেতরে বসাও');return;}
+ for(const o of objects){
+  const min=(RADIUS[o.userData.kind]+RADIUS[selected])*.8;
+  if(Math.hypot(o.position.x-point.x,o.position.z-point.z)<min){showToast('এখানে জায়গা নেই, একটু সরে বসাও');return;}
+ }
+ spawn(selected,point.x,point.y,point.z,Math.random()*Math.PI*2);
+ updateStats();save();showToast('তোমার পৃথিবীতে নতুন কিছু যোগ হলো!');
+}
+function onTap(e){
+ const rect=renderer.domElement.getBoundingClientRect();
+ pointer.x=((e.clientX-rect.left)/rect.width)*2-1;
+ pointer.y=-((e.clientY-rect.top)/rect.height)*2+1;
+ raycaster.setFromCamera(pointer,camera);
+ const hit=raycaster.intersectObject(ground,false)[0];
+ if(hit) placeAt(hit.point);
+}
+
+// ---------- camera controls: 1 finger = orbit, 2 fingers = pinch zoom ----------
+function updateCamera(){
+ const len=clamp(camera.position.length(),10,32);
+ camera.position.setLength(len);
+ camera.position.y=clamp(camera.position.y,4,24);
+ camera.lookAt(0,0,0);
+}
+const pointers=new Map();
+let moved=false,startX=0,startY=0,pinchDist=0;
+const el=renderer.domElement;
+const pinchNow=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a.x-b.x,a.y-b.y);};
+
+el.addEventListener('pointerdown',e=>{
+ pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+ try{el.setPointerCapture(e.pointerId);}catch(_){}
+ if(pointers.size===1){moved=false;startX=e.clientX;startY=e.clientY;}
+ else if(pointers.size===2){moved=true;pinchDist=pinchNow();}
+});
+el.addEventListener('pointermove',e=>{
+ const prev=pointers.get(e.pointerId); if(!prev)return;
+ const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
+ prev.x=e.clientX;prev.y=e.clientY;
+ if(pointers.size===2){
+  const d=pinchNow();
+  if(pinchDist>0&&d>0){camera.position.multiplyScalar(pinchDist/d);updateCamera();}
+  pinchDist=d;
+ }else if(pointers.size===1){
+  if(Math.hypot(e.clientX-startX,e.clientY-startY)>8)moved=true;
+  if(moved){
+   camera.position.applyAxisAngle(Y_AXIS,-dx*.006);
+   camera.position.y+=dy*.025;
+   updateCamera();
+  }
+ }
+});
+el.addEventListener('pointerup',e=>{
+ if(pointers.size===1&&pointers.has(e.pointerId)&&!moved)onTap(e);
+ pointers.delete(e.pointerId);
+ if(pointers.size<2)pinchDist=0;
+});
+el.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);pinchDist=0;});
+el.addEventListener('wheel',e=>{camera.position.multiplyScalar(e.deltaY>0?1.06:.94);updateCamera();},{passive:true});
+
+document.querySelectorAll('[data-kind]').forEach(btn=>btn.addEventListener('click',()=>{
+ document.querySelectorAll('[data-kind]').forEach(b=>b.classList.remove('active'));
+ btn.classList.add('active');selected=btn.dataset.kind;
+}));
+document.querySelector('#undo').addEventListener('click',()=>{
+ const obj=objects.pop();
+ if(obj){scene.remove(obj);updateStats();save();showToast('শেষ জিনিসটি সরানো হয়েছে');}
+});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));});
+
+load();
+function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}
+animate();
+</script>
+</body>
+</html>
